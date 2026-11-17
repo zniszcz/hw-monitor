@@ -26,36 +26,42 @@ h1{font-size:20px;margin:0 0 4px}.mut{color:var(--mut);font-size:13px}
 const ZAKRESY=[["1 h",3600],["6 h",21600],["24 h",86400],["7 dni",604800],["całość",0]];
 let zakres=86400,dane=null,p1=null,p2=null;
 const z=document.getElementById('zakres');
-ZAKRESY.forEach(([n,s])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{zakres=s;rysuj()};b.dataset.s=s;z.appendChild(b)});
+ZAKRESY.forEach(([n,s])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{zakres=s;pobierz().catch(()=>{})};b.dataset.s=s;z.appendChild(b)});
 function num(v){const x=parseFloat(v);return Number.isFinite(x)?x:null}
+const cache={};
+async function dzien(d,swiezy){if(cache[d]&&!swiezy)return cache[d];const r=await fetch('minuty/'+d+'.csv?t='+Date.now(),{cache:'no-store'});const t=await r.text();
+  cache[d]=t.trim().split('\n').slice(1).map(l=>l.split(','));return cache[d]}
 async function pobierz(){
-  const r=await fetch('probki.csv?t='+Date.now(),{cache:'no-store'});const t=await r.text();
-  const w=t.trim().split('\n').slice(1).map(l=>l.split(','));
-  const c=[[],[],[],[],[],[],[],[],[],[],[]];
-  for(const k of w){const ts=Date.parse(k[0])/1000;if(!ts)continue;
-    c[0].push(ts);c[1].push(num(k[1]));c[2].push(num(k[3]));c[3].push(num(k[4]));c[4].push(num(k[6]));c[5].push(num(k[7]));
-    c[6].push(num(k[9]));c[7].push(num(k[10])==null?null:num(k[10])/2);c[8].push(num(k[11]));c[9].push(num(k[12]));c[10].push(num(k[8]))}
+  const dni=await (await fetch('dni.json?t='+Date.now(),{cache:'no-store'})).json();
+  const ile=zakres?Math.ceil(zakres/86400)+1:dni.length;const wybrane=dni.slice(-ile);
+  const ostatni=wybrane[wybrane.length-1];
+  const w=(await Promise.all(wybrane.map(d=>dzien(d,d===ostatni||d===wybrane[wybrane.length-2])))).flat();
+  const c=Array.from({length:12},()=>[]);
+  for(const k of w){const ts=Date.parse(k[0]+':00')/1000;if(!ts)continue;
+    c[0].push(ts);c[1].push(num(k[1]));c[2].push(num(k[2]));c[3].push(num(k[3]));c[4].push(num(k[4]));c[5].push(num(k[5]));
+    c[6].push(num(k[7]));c[7].push(num(k[11]));c[8].push(num(k[12]));c[9].push(num(k[13]));c[10].push(num(k[14]));c[11].push(num(k[10]))}
   dane=c;rysuj();
 }
 function wytnij(){if(!dane||!dane[0].length)return null;const koniec=dane[0][dane[0].length-1];const od=zakres?koniec-zakres:0;
-  let i=dane[0].findIndex(x=>x>=od);if(i<0)i=0;const out=dane.map(a=>a.slice(i));
-  const n=out[0].length,krok=Math.max(1,Math.floor(n/3000));if(krok>1){return out.map((a,j)=>a.filter((_,k)=>k%krok===0))}return out}
-function stat(a){const v=a.filter(x=>x!=null);if(!v.length)return'-';const s=v.reduce((p,x)=>p+x,0)/v.length;return `${Math.min(...v).toFixed(0)} / ${s.toFixed(1)} / ${Math.max(...v).toFixed(0)}`}
+  let i=dane[0].findIndex(x=>x>=od);if(i<0)i=0;return dane.map(a=>a.slice(i))}
+function stat(a,f){const v=a.filter(x=>x!=null);if(!v.length)return'-';return f(v)}
+const sr=v=>(v.reduce((p,x)=>p+x,0)/v.length).toFixed(1),mn=v=>Math.min(...v).toFixed(0),mx=v=>Math.max(...v).toFixed(0);
 function rysuj(){
   document.querySelectorAll('#zakres button').forEach(b=>b.classList.toggle('on',+b.dataset.s===zakres));
   const d=wytnij();if(!d)return;
-  const dl=d[10].filter(x=>x!=null),dd=dl.length>1?dl[dl.length-1]-dl[0]:0;
-  document.getElementById('staty').innerHTML=[["CPU °C min/śr/max",stat(d[1])],["GPU °C",stat(d[3])],["NVMe °C",stat(d[2])],["Load",stat(d[4])],["Dławienie w zakresie",dd.toLocaleString('pl')],["Próbek",d[0].length.toLocaleString('pl')]].map(([a,b])=>`<div class="stat"><b>${a}</b>${b}</div>`).join('');
+  const dl=d[11].filter(x=>x!=null),dd=dl.length>1?dl[dl.length-1]-dl[0]:0;
+  document.getElementById('staty').innerHTML=[["CPU °C min",stat(d[1],mn)],["CPU °C średnia",stat(d[2],sr)],["CPU °C max",stat(d[3],mx)],["GPU °C max",stat(d[5],mx)],["NVMe °C max",stat(d[4],mx)],["Load średni",stat(d[6],sr)],["Dławienie w zakresie",dd.toLocaleString('pl')]].map(([a,b])=>`<div class="stat"><b>${a}</b>${b}</div>`).join('');
   const last=new Date(dane[0][dane[0].length-1]*1000);
-  document.getElementById('info').textContent=`Ostatnia próbka: ${last.toLocaleString('pl')} · odświeżanie co minutę · dane co 10 s, wysyłka co 15 min`;
+  document.getElementById('info').textContent=`Ostatnia minuta: ${last.toLocaleString('pl')} · strona odświeża się co minutę, dane przychodzą co 15 min (minuty: min, średnia, max z próbek co 10 s)`;
   const W=Math.min(1068,document.querySelector('main').clientWidth);
-  const o1={width:W,height:300,title:'Temperatury',scales:{x:{time:true}},axes:[{},{label:'°C'}],
-    series:[{},{label:'CPU',stroke:'#e4572e',width:1.5},{label:'NVMe',stroke:'#4c9be8'},{label:'GPU',stroke:'#29a36a'}]};
+  const o1={width:W,height:300,title:'Temperatury',scales:{x:{time:true}},axes:[{},{label:'°C'}],bands:[{series:[3,1],fill:'rgba(228,87,46,0.15)'}],
+    series:[{},{label:'CPU min',stroke:'rgba(228,87,46,0.4)'},{label:'CPU średnia',stroke:'#e4572e',width:1.5},{label:'CPU max',stroke:'rgba(228,87,46,0.4)'},{label:'NVMe max',stroke:'#4c9be8'},{label:'GPU max',stroke:'#29a36a'}]};
+  const st=()=>uPlot.paths.stepped({align:1});
   const o2={width:W,height:220,title:'Obciążenie i praca',scales:{x:{time:true}},axes:[{},{label:'load'},{side:1,label:'liczba',scale:'n',grid:{show:false}}],
-    series:[{},{label:'Load',stroke:'#8a63d2'},{label:'Workerzy floty',stroke:'#e4a72e',scale:'n',paths:uPlot.paths.stepped({align:1})},{label:'Bramki',stroke:'#d23f7a',scale:'n',paths:uPlot.paths.stepped({align:1})},{label:'Wdrożenie',stroke:'#2eb5c4',scale:'n',paths:uPlot.paths.stepped({align:1})},{label:'Mielarka',stroke:'#7a8a3c',scale:'n',paths:uPlot.paths.stepped({align:1})}]};
-  const a1=[d[0],d[1],d[2],d[3]],a2=[d[0],d[4],d[6],d[7],d[8],d[9]];
+    series:[{},{label:'Load',stroke:'#8a63d2'},{label:'Workerzy floty',stroke:'#e4a72e',scale:'n',paths:st()},{label:'Bramki',stroke:'#d23f7a',scale:'n',paths:st()},{label:'Wdrożenie',stroke:'#2eb5c4',scale:'n',paths:st()},{label:'Mielarka',stroke:'#7a8a3c',scale:'n',paths:st()}]};
   if(p1){p1.destroy();p2.destroy()}
-  p1=new uPlot(o1,a1,document.getElementById('w1'));p2=new uPlot(o2,a2,document.getElementById('w2'));
+  p1=new uPlot(o1,[d[0],d[1],d[2],d[3],d[4],d[5]],document.getElementById('w1'));
+  p2=new uPlot(o2,[d[0],d[6],d[7],d[8],d[9],d[10]],document.getElementById('w2'));
 }
 pobierz().catch(e=>document.getElementById('info').textContent='Błąd: '+e.message);
 setInterval(()=>pobierz().catch(()=>{}),60000);
