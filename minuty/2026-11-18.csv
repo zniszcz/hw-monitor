@@ -1,0 +1,4 @@
+minuta,cpu_min,cpu_sr,cpu_max,nvme_max,gpu_max,gpu_proc,load_sr,load_max,mhz,dlawienie,workerzy,bramki,wdrozenie,mielarka
+2026-11-18T00:00,74,78.0,84,48,50,32,4.18,4.61,3993,1121326,3,1,0,0
+2026-11-18T00:01,80,84.7,89,47,49,14,4.18,4.48,3501,1121927,3,1,0,0
+2026-11-18T00:02,64,70.6,75,47,49,16,3.42,3.78,2920,1121986,3,1,0,0
