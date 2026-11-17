@@ -43,7 +43,11 @@ async function pobierz(){
   dane=c;rysuj();
 }
 function wytnij(){if(!dane||!dane[0].length)return null;const koniec=dane[0][dane[0].length-1];const od=zakres?koniec-zakres:0;
-  let i=dane[0].findIndex(x=>x>=od);if(i<0)i=0;return dane.map(a=>a.slice(i))}
+  let i=dane[0].findIndex(x=>x>=od);if(i<0)i=0;const d=dane.map(a=>a.slice(i));
+  // Najwyżej ~1500 punktów na wykresie: przy dłuższym zakresie kubełki trzymają min z minimów, średnią i max z maksimów.
+  const n=d[0].length,k=Math.ceil(n/1500);if(k<=1)return d;
+  const agg=[(a)=>a[0],a=>Math.min(...a),a=>a.reduce((p,x)=>p+x,0)/a.length,a=>Math.max(...a),a=>Math.max(...a),a=>Math.max(...a),a=>a.reduce((p,x)=>p+x,0)/a.length,a=>Math.max(...a),a=>Math.max(...a),a=>Math.max(...a),a=>Math.max(...a),a=>a[a.length-1]];
+  const out=d.map(()=>[]);for(let j=0;j<n;j+=k){d.forEach((col,c)=>{const v=col.slice(j,j+k).filter(x=>x!=null);out[c].push(v.length?agg[c](v):null)})}return out}
 function stat(a,f){const v=a.filter(x=>x!=null);if(!v.length)return'-';return f(v)}
 const sr=v=>(v.reduce((p,x)=>p+x,0)/v.length).toFixed(1),mn=v=>Math.min(...v).toFixed(0),mx=v=>Math.max(...v).toFixed(0);
 function rysuj(){
