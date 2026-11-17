@@ -4,30 +4,39 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
 <style>
 :root{--bg:#fff;--fg:#1d2228;--mut:#6b7280;--card:#f4f5f7}
-@media (prefers-color-scheme:dark){:root{--bg:#14171b;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2127}}
-html{scrollbar-gutter:stable}body{margin:0;overflow-x:hidden;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
+:root{--grid:rgba(0,0,0,0.12)}@media (prefers-color-scheme:dark){:root:not([data-tryb=jasny]){--bg:#14171b;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2127;--grid:rgba(255,255,255,0.14)}}:root[data-tryb=ciemny]{--bg:#14171b;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2127;--grid:rgba(255,255,255,0.14)}
+.u-title{font-size:15px!important;font-weight:600!important}.u-legend{color:var(--fg)}.u-legend .u-value{color:var(--mut)}
+body{margin:0;overflow-x:hidden;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
 main{max-width:1100px;margin:0 auto;padding:16px}
 h1{font-size:20px;margin:0 0 4px}.mut{color:var(--mut);font-size:13px}
 .zakres button{margin:8px 6px 8px 0;padding:6px 12px;border:1px solid var(--mut);background:var(--card);color:var(--fg);border-radius:6px;cursor:pointer}
 .zakres button.on{border-color:#e4572e;color:#e4572e}
 .staty{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:8px 0 12px}
 .stat{background:var(--card);border-radius:8px;padding:8px 10px}.stat b{display:block;font-size:13px;color:var(--mut);font-weight:500}
-.wyk{margin-bottom:16px}@media (max-width:600px){main{padding:12px}h1{font-size:18px}.staty{grid-template-columns:repeat(2,1fr)}.zakres button{padding:6px 9px;margin:6px 4px 6px 0}.u-legend .u-series{padding:1px 4px}.u-legend th{font-weight:400}}.u-legend{font-size:12px}
+.wyk{margin-bottom:16px;overflow:hidden}.u-legend.u-inline{display:flex;flex-wrap:wrap;justify-content:center;gap:2px 10px;max-width:100%}.u-legend.u-inline tbody{display:contents}.u-legend.u-inline tr{display:inline-flex;align-items:center}.u-legend tr:first-child:has(th:empty),.u-legend .u-series:first-child{display:none}@media (max-width:600px){.u-legend .u-value{display:none}main{padding:12px}h1{font-size:18px}.staty{grid-template-columns:repeat(2,1fr)}.zakres button{padding:6px 9px;margin:6px 4px 6px 0}.u-legend .u-series{padding:1px 4px}.u-legend th{font-weight:400}}.u-legend{font-size:12px}
 </style></head><body><main>
 <h1>Temperatura laptopa</h1>
 <div class="mut" id="info">Ładowanie…</div>
-<div class="zakres" id="zakres"></div>
+<div class="zakres" id="zakres"></div><div class="zakres"><button onclick="przesun(1)" title="wcześniej (←)">‹ wcześniej</button><button onclick="przesun(-1)" title="później (→)">później ›</button><button onclick="zoom(-1)" title="przybliż (Ctrl+kółko)">+</button><button onclick="zoom(1)" title="oddal (Ctrl+kółko)">−</button></div>
 <div class="staty" id="staty"></div>
 <div class="wyk" id="w1"></div>
 <div class="wyk" id="w2"></div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
 <script>
-const ZAKRESY=[["1 h",3600],["6 h",21600],["24 h",86400],["7 dni",604800],["całość",0]];
+{const t=new URLSearchParams(location.search).get('tryb');if(t)document.documentElement.dataset.tryb=t}
+// Zasady próbkowania (Adrian 17.11.2026): laptop mierzy co 10 s, na stronę idą minuty (min, średnia, max).
+// Wykres pokazuje jeden punkt na kubełek, a kubełek zależy od zakresu, żeby na ekranie było zawsze ok. 60-170 punktów:
+// 1 h -> 1 min (60 pkt), 6 h -> 5 min (72), 24 h -> 15 min (96), 7 dni -> 1 h (168), całość -> 6 h.
+// Kubełek trzyma najniższe minimum, średnią i najwyższe maksimum, więc szczyty nigdy nie znikają.
+// Zoom: przyciski +/- i Ctrl+kółko przechodzą o jeden zakres w górę lub w dół, zachowując środek widoku (najmniej 1 h, najwięcej całość).
+// Przewijanie: przeciąganie płynnie co do piksela, strzałki i klawisze ← → o pół okna z animacją 400 ms.
+// Po przewinięciu widok stoi 2 min, potem płynnie wraca do najnowszych danych.
+const ZAKRESY=[["1 h",3600,60],["6 h",21600,300],["24 h",86400,900],["7 dni",604800,3600],["całość",0,21600]];
 const TRZYMAJ_MS=120000; // po przewinięciu widok stoi 2 min, potem płynnie wraca do najnowszych danych
-let zakres=86400,dane=null,p1=null,p2=null,offset=0,ostatniRuch=0,anim=null;
+let zakres=86400,minuty=null,dane=null,p1=null,p2=null,offset=0,ostatniRuch=0,anim=null;
 const z=document.getElementById('zakres');
-ZAKRESY.forEach(([n,s])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{zakres=s;offset=0;ostatniRuch=0;rysuj()};b.dataset.s=s;z.appendChild(b)});
+ZAKRESY.forEach(([n,s,kb])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{zakres=s;offset=0;ostatniRuch=0;dane=minuty?kubelki(minuty):null;rysuj()};b.dataset.s=s;z.appendChild(b)});
 function num(v){const x=parseFloat(v);return Number.isFinite(x)?x:null}
 const cache={};
 async function dzien(d,swiezy){if(cache[d]&&!swiezy)return cache[d];const r=await fetch('minuty/'+d+'.csv?t='+Date.now(),{cache:'no-store'});const t=await r.text();
@@ -39,14 +48,27 @@ async function pobierz(){
   for(const k of w){const ts=Date.parse(k[0]+':00')/1000;if(!ts)continue;
     c[0].push(ts);c[1].push(num(k[1]));c[2].push(num(k[2]));c[3].push(num(k[3]));c[4].push(num(k[4]));c[5].push(num(k[5]));
     c[6].push(num(k[7]));c[7].push(num(k[11]));c[8].push(num(k[12]));c[9].push(num(k[13]));c[10].push(num(k[14]));c[11].push(num(k[10]))}
-  const stary=dane?dane[0][dane[0].length-1]:null;dane=c;
+  minuty=c;const stary=dane?dane[0][dane[0].length-1]:null;dane=kubelki(c);
   // Przewinięty widok nie ucieka przy nowych danych: przesunięcie rośnie o to, o ile przybyło.
   if(stary&&offset>0)offset+=c[0][c[0].length-1]-stary;
   rysuj();
 }
+function kubelek(){return (ZAKRESY.find(z=>z[1]===zakres)||ZAKRESY[2])[2]}
+// Kolumny: 0 czas, 1 cpu min, 2 cpu śr, 3 cpu max, 4 nvme max, 5 gpu max, 6 load śr, 7-10 prace (max), 11 dławienie (ostatnie).
+function kubelki(c){const b=kubelek();if(b<=60)return c;const AGG=['t','min','avg','max','max','max','avg','max','max','max','max','last'];
+  const out=c.map(()=>[]);let i=0;const n=c[0].length;
+  while(i<n){const k=Math.floor(c[0][i]/b)*b;let j=i;while(j<n&&Math.floor(c[0][j]/b)*b===k)j++;
+    out[0].push(k);for(let col=1;col<c.length;col++){const v=c[col].slice(i,j).filter(x=>x!=null);const a=AGG[col];
+      out[col].push(!v.length?null:a==='min'?Math.min(...v):a==='max'?Math.max(...v):a==='last'?v[v.length-1]:v.reduce((p,x)=>p+x,0)/v.length)}
+    i=j}return out}
+function zmienZakres(s){const sr=dane?okno().reduce((a,b)=>a+b)/2:0;zakres=s;dane=minuty?kubelki(minuty):null;
+  if(dane&&s){offset=Math.min(maxOffset(),Math.max(0,najnowszy()-(sr+s/2)));ostatniRuch=offset>0?Date.now():0}else offset=0;rysuj()}
+function zoom(k){const i=ZAKRESY.findIndex(z=>z[1]===zakres);const j=Math.min(ZAKRESY.length-1,Math.max(0,i+k));if(j!==i)zmienZakres(ZAKRESY[j][1])}
+function przesun(kier){if(!zakres||!dane)return;ostatniRuch=Date.now();animuj(Math.min(maxOffset(),Math.max(0,offset+kier*zakres/2)),400)}
 const najnowszy=()=>dane[0][dane[0].length-1],najstarszy=()=>dane[0][0];
 function szer(){return zakres||(najnowszy()-najstarszy())||60}
-function okno(){const mx=najnowszy()-offset;return [zakres?mx-zakres:najstarszy(),mx]}
+// Gdy danych jest mniej niż zakres, wykres pokazuje tylko to, co jest, zamiast pustej doby.
+function okno(){const mx=najnowszy()-offset;if(!zakres||najnowszy()-najstarszy()<zakres)return [najstarszy(),najnowszy()];return [mx-zakres,mx]}
 function maxOffset(){return zakres?Math.max(0,najnowszy()-najstarszy()-zakres):0}
 function lo(a,t){let l=0,h=a.length;while(l<h){const m=(l+h)>>1;if(a[m]<t)l=m+1;else h=m}return l}
 function stat(a,f){const v=a.filter(x=>x!=null);if(!v.length)return'-';return f(v)}
@@ -67,6 +89,7 @@ function przeciaganie(u){let x0=null,o0=0,v=0,tl=0,xl=0;const el=u.over;el.style
     v=(e.clientX-xl)*sPx()/Math.max(1,now-tl);xl=e.clientX;tl=now;ostatniRuch=Date.now();ustawOkno()});
   const koniec=()=>{if(x0==null)return;x0=null;el.style.cursor='grab';ostatniRuch=Date.now();
     let last=performance.now();const krok=t=>{const dt=t-last;last=t;v*=Math.pow(0.995,dt);offset=Math.min(maxOffset(),Math.max(0,offset+v*dt));ustawOkno();if(Math.abs(v)>0.001)anim=requestAnimationFrame(krok)};anim=requestAnimationFrame(krok)};
+  el.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();zoom(e.deltaY<0?-1:1)},{passive:false});
   el.addEventListener('pointerup',koniec);el.addEventListener('pointercancel',koniec)}
 // Co ~50 px szerokości wykresu: kropka i wartość najwyższej temperatury (CPU max) u góry oraz najniższej (CPU min) u dołu.
 function piki(){return{hooks:{draw:[u=>{
@@ -82,17 +105,19 @@ function piki(){return{hooks:{draw:[u=>{
       ctx.fillStyle=getComputedStyle(document.body).color;ctx.fillText(Math.round(arr[i])+'°',px,py+dy*dpr)}}
   ctx.restore()}]}}}
 const polskiCzas=t=>uPlot.fmtDate(t.replace(/\{h\}:\{mm\}\{aa\}/g,'{HH}:{mm}').replace(/\{h\}\{aa\}/g,'{HH}:00').replace(/\{M\}\/\{D\}\/\{YY\}/g,'{D}.{MM}').replace(/\{M\}\/\{D\}/g,'{D}.{MM}').replace(/\{aa\}/g,''));
+function kolory(){const c=getComputedStyle(document.documentElement);return{fg:c.getPropertyValue('--fg').trim(),mut:c.getPropertyValue('--mut').trim(),grid:c.getPropertyValue('--grid').trim()}}
+function os(k,extra){return Object.assign({stroke:k.mut,labelFont:'600 12px system-ui',font:'12px system-ui',grid:{stroke:k.grid,width:1},ticks:{stroke:k.grid,width:1}},extra)}
 function rysuj(){
   document.querySelectorAll('#zakres button').forEach(b=>b.classList.toggle('on',+b.dataset.s===zakres));
   if(!dane||!dane[0].length)return;offset=Math.min(offset,maxOffset());
-  const mm=document.querySelector('main'),cs=getComputedStyle(mm);const W=Math.min(1068,mm.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight));const maly=W<600;
-  const st=()=>uPlot.paths.stepped({align:1}),kur={drag:{x:false,y:false},sync:{key:'hw'}};
+  const W=Math.min(1068,document.getElementById('w1').clientWidth);const maly=W<600;
+  const k=kolory();const st=()=>uPlot.paths.stepped({align:1}),kur={drag:{x:false,y:false},sync:{key:'hw'}};
   const o1={fmtDate:polskiCzas,width:W,height:maly?260:320,title:'Temperatury',cursor:kur,scales:{x:{time:true,auto:false}},plugins:[piki()],
-    axes:[{space:maly?60:80,label:'Czas [godz:min]',labelSize:20},{label:'Temperatura [°C]',labelSize:18,size:maly?36:50,space:24,grid:{stroke:'rgba(128,128,128,0.35)',width:1},values:(u,v)=>v.map(x=>x+'°')}],
+    axes:[os(k,{space:maly?60:80,label:'Czas [godz:min]',labelSize:20}),os(k,{label:'Temperatura [°C]',labelSize:18,size:maly?40:50,space:24,values:(u,v)=>v.map(x=>x+'°')})],
     bands:[{series:[3,1],fill:'rgba(228,87,46,0.15)'}],
     series:[{},{label:'CPU min',stroke:'rgba(228,87,46,0.4)'},{label:'CPU średnia',stroke:'#e4572e',width:1.5},{label:'CPU max',stroke:'rgba(228,87,46,0.4)'},{label:'NVMe max',stroke:'#4c9be8'},{label:'GPU max',stroke:'#29a36a'}]};
   const o2={fmtDate:polskiCzas,width:W,height:maly?200:220,title:'Obciążenie i praca',cursor:kur,scales:{x:{time:true,auto:false}},
-    axes:[{space:maly?60:80,label:'Czas [godz:min]',labelSize:20},{label:'Obciążenie (load)',labelSize:18,size:maly?32:50},{side:1,label:'Liczba prac',labelSize:18,scale:'n',size:maly?28:50,grid:{show:false}}],
+    axes:[os(k,{space:maly?60:80,label:'Czas [godz:min]',labelSize:20}),os(k,{label:'Obciążenie (load)',labelSize:18,size:maly?36:50}),os(k,{side:1,label:maly?'':'Liczba prac',labelSize:maly?0:18,scale:'n',size:maly?26:50,grid:{show:false},incrs:[1,2,5]})],
     series:[{},{label:'Load',stroke:'#8a63d2'},{label:'Workerzy floty',stroke:'#e4a72e',scale:'n',paths:st()},{label:'Bramki',stroke:'#d23f7a',scale:'n',paths:st()},{label:'Wdrożenie',stroke:'#2eb5c4',scale:'n',paths:st()},{label:'Mielarka',stroke:'#7a8a3c',scale:'n',paths:st()}]};
   if(p1){p1.destroy();p2.destroy()}
   const d=dane;p1=new uPlot(o1,[d[0],d[1],d[2],d[3],d[4],d[5]],document.getElementById('w1'));
@@ -100,6 +125,8 @@ function rysuj(){
   przeciaganie(p1);przeciaganie(p2);ustawOkno();
 }
 pobierz().catch(e=>document.getElementById('info').textContent='Błąd: '+e.message);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',rysuj);
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft')przesun(1);if(e.key==='ArrowRight')przesun(-1);if(e.key==='+')zoom(-1);if(e.key==='-')zoom(1)});
 let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(rysuj,200)});
 setInterval(()=>pobierz().catch(()=>{}),60000);
 setInterval(()=>{if(offset>0&&Date.now()-ostatniRuch>TRZYMAJ_MS){ostatniRuch=Date.now();animuj(0)}else if(offset>0)staty()},1000);
