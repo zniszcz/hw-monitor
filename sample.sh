@@ -2,6 +2,7 @@
 # Lekki zapis temperatury i obciążenia laptopa do CSV co 10 s (prośba Adriana 17.11.2026, porównanie po serwisie).
 # Kolumny: czas, temp. pakietu CPU (°C), acpitz (°C), NVMe (°C), GPU (°C), GPU (%), load 1m, MHz cpu0,
 # licznik dławienia pakietu, workerzy floty, bramki, wdrożenie, zadania mielarki.
+export LC_ALL=C
 OUT="$HOME/.local/share/hw-monitor/probki.csv"
 [ -s "$OUT" ] || echo "czas,cpu_c,acpitz_c,nvme_c,gpu_c,gpu_proc,load1,mhz,dlawienie,workerzy,bramki,wdrozenie,mielarka" > "$OUT"
 rd() { [ -r "$1" ] && awk '{printf "%.1f", $1/1000}' "$1" || echo ""; }
@@ -14,9 +15,9 @@ while true; do
   mhz=$(( $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo 0) / 1000 ))
   thr=$(cat /sys/devices/system/cpu/cpu0/thermal_throttle/package_throttle_count 2>/dev/null)
   ps=$(ps -eo args)
-  w=$(grep -c -- '--remote-control studia-flota-' <<<"$ps")
+  w=$(grep -cE '^[^ ]*claude .*--remote-control studia-flota-' <<<"$ps")
   g=$(grep -c '^bash .*tools/fleet/gates.sh' <<<"$ps")
-  dep=$(grep -c 'skills/deploy/scripts/deploy.mjs' <<<"$ps")
+  dep=$(grep -cE '^node [^ ]*deploy\.mjs' <<<"$ps")
   mp=$(pgrep -f 'worker/worker.js' | head -1); m=0; [ -n "$mp" ] && m=$(pgrep -P "$mp" | wc -l)
   echo "$(date -Iseconds),$(rd $CPU),$(rd $ACPI),$(rd $NVME),$gpu,$load,$mhz,$thr,$w,$g,$dep,$m" >> "$OUT"
   i=$((i+1)); sleep 10
