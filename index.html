@@ -72,10 +72,10 @@ function rysuj(){
   const last=new Date(dane[0][dane[0].length-1]*1000);
   document.getElementById('info').textContent=`Ostatnia minuta: ${last.toLocaleString('pl')} · strona odświeża się co minutę, dane przychodzą co 15 min (minuty: min, średnia, max z próbek co 10 s)`;
   const mm=document.querySelector('main'),cs=getComputedStyle(mm);const W=Math.min(1068,mm.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight));const maly=W<600;
-  const o1={width:W,height:maly?260:320,title:'Temperatury',fmtDate:polskiCzas,scales:{x:{time:true}},plugins:[piki()],axes:[{space:maly?60:80},{label:maly?'':'°C',size:maly?36:50,space:24,grid:{stroke:'rgba(128,128,128,0.35)',width:1},values:(u,v)=>v.map(x=>x+'°')}],bands:[{series:[3,1],fill:'rgba(228,87,46,0.15)'}],
+  const o1={width:W,height:maly?260:320,title:'Temperatury',fmtDate:polskiCzas,scales:{x:{time:true}},plugins:[piki()],axes:[{space:maly?60:80,label:'Czas [godz:min]',labelSize:20},{label:'Temperatura [°C]',labelSize:18,size:maly?36:50,space:24,grid:{stroke:'rgba(128,128,128,0.35)',width:1},values:(u,v)=>v.map(x=>x+'°')}],bands:[{series:[3,1],fill:'rgba(228,87,46,0.15)'}],
     series:[{},{label:'CPU min',stroke:'rgba(228,87,46,0.4)'},{label:'CPU średnia',stroke:'#e4572e',width:1.5},{label:'CPU max',stroke:'rgba(228,87,46,0.4)'},{label:'NVMe max',stroke:'#4c9be8'},{label:'GPU max',stroke:'#29a36a'}]};
   const st=()=>uPlot.paths.stepped({align:1});
-  const o2={fmtDate:polskiCzas,width:W,height:maly?200:220,title:'Obciążenie i praca',scales:{x:{time:true}},axes:[{space:maly?60:80},{label:maly?'':'load',size:maly?32:50},{side:1,label:maly?'':'liczba',scale:'n',size:maly?24:50,grid:{show:false}}],
+  const o2={fmtDate:polskiCzas,width:W,height:maly?200:220,title:'Obciążenie i praca',scales:{x:{time:true}},axes:[{space:maly?60:80,label:'Czas [godz:min]',labelSize:20},{label:'Obciążenie (load)',labelSize:18,size:maly?32:50},{side:1,label:'Liczba prac',labelSize:18,scale:'n',size:maly?28:50,grid:{show:false}}],
     series:[{},{label:'Load',stroke:'#8a63d2'},{label:'Workerzy floty',stroke:'#e4a72e',scale:'n',paths:st()},{label:'Bramki',stroke:'#d23f7a',scale:'n',paths:st()},{label:'Wdrożenie',stroke:'#2eb5c4',scale:'n',paths:st()},{label:'Mielarka',stroke:'#7a8a3c',scale:'n',paths:st()}]};
   if(p1){p1.destroy();p2.destroy()}
   p1=new uPlot(o1,[d[0],d[1],d[2],d[3],d[4],d[5]],document.getElementById('w1'));
