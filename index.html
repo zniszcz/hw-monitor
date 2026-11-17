@@ -5,14 +5,14 @@
 <style>
 :root{--bg:#fff;--fg:#1d2228;--mut:#6b7280;--card:#f4f5f7}
 @media (prefers-color-scheme:dark){:root{--bg:#14171b;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2127}}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
+html{scrollbar-gutter:stable}body{margin:0;overflow-x:hidden;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
 main{max-width:1100px;margin:0 auto;padding:16px}
 h1{font-size:20px;margin:0 0 4px}.mut{color:var(--mut);font-size:13px}
 .zakres button{margin:8px 6px 8px 0;padding:6px 12px;border:1px solid var(--mut);background:var(--card);color:var(--fg);border-radius:6px;cursor:pointer}
 .zakres button.on{border-color:#e4572e;color:#e4572e}
 .staty{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:8px 0 12px}
 .stat{background:var(--card);border-radius:8px;padding:8px 10px}.stat b{display:block;font-size:13px;color:var(--mut);font-weight:500}
-.wyk{margin-bottom:16px}.u-legend{font-size:12px}
+.wyk{margin-bottom:16px}@media (max-width:600px){main{padding:12px}h1{font-size:18px}.staty{grid-template-columns:repeat(2,1fr)}.zakres button{padding:6px 9px;margin:6px 4px 6px 0}.u-legend .u-series{padding:1px 4px}.u-legend th{font-weight:400}}.u-legend{font-size:12px}
 </style></head><body><main>
 <h1>Temperatura laptopa</h1>
 <div class="mut" id="info">Ładowanie…</div>
@@ -50,6 +50,20 @@ function wytnij(){if(!dane||!dane[0].length)return null;const koniec=dane[0][dan
   const out=d.map(()=>[]);for(let j=0;j<n;j+=k){d.forEach((col,c)=>{const v=col.slice(j,j+k).filter(x=>x!=null);out[c].push(v.length?agg[c](v):null)})}return out}
 function stat(a,f){const v=a.filter(x=>x!=null);if(!v.length)return'-';return f(v)}
 const sr=v=>(v.reduce((p,x)=>p+x,0)/v.length).toFixed(1),mn=v=>Math.min(...v).toFixed(0),mx=v=>Math.max(...v).toFixed(0);
+
+// Co ~50 px szerokości wykresu: kropka i wartość najwyższej temperatury (CPU max) u góry oraz najniższej (CPU min) u dołu.
+function piki(){return{hooks:{draw:[u=>{
+  const ctx=u.ctx,dpr=devicePixelRatio,xs=u.data[0],mx=u.data[3],mi=u.data[1];if(!xs.length)return;
+  const L=u.bbox.left,Wb=u.bbox.width,krok=50*dpr;ctx.save();ctx.font=`${11*dpr}px system-ui`;ctx.textAlign='center';
+  for(let x0=L;x0<L+Wb;x0+=krok){
+    const t0=u.posToVal((x0-L)/dpr,'x'),t1=u.posToVal((x0-L+krok)/dpr,'x');let hi=-1,lo=-1;
+    for(let i=0;i<xs.length;i++){if(xs[i]<t0)continue;if(xs[i]>=t1)break;if(mx[i]!=null&&(hi<0||mx[i]>mx[hi]))hi=i;if(mi[i]!=null&&(lo<0||mi[i]<mi[lo]))lo=i}
+    for(const [i,arr,kol,dy] of [[hi,mx,'#e4572e',-7],[lo,mi,'#4c9be8',14]]){if(i<0)continue;
+      const px=u.valToPos(xs[i],'x',true),py=u.valToPos(arr[i],'y',true);
+      ctx.fillStyle=kol;ctx.beginPath();ctx.arc(px,py,3*dpr,0,7);ctx.fill();
+      ctx.fillStyle=getComputedStyle(document.body).color;ctx.fillText(Math.round(arr[i])+'°',px,py+dy*dpr)}}
+  ctx.restore()}]}}}
+const polskiCzas=t=>uPlot.fmtDate(t.replace(/\{h\}:\{mm\}\{aa\}/g,'{HH}:{mm}').replace(/\{h\}\{aa\}/g,'{HH}:00').replace(/\{M\}\/\{D\}\/\{YY\}/g,'{D}.{MM}').replace(/\{aa\}/g,''));
 function rysuj(){
   document.querySelectorAll('#zakres button').forEach(b=>b.classList.toggle('on',+b.dataset.s===zakres));
   const d=wytnij();if(!d)return;
@@ -57,16 +71,17 @@ function rysuj(){
   document.getElementById('staty').innerHTML=[["CPU °C min",stat(d[1],mn)],["CPU °C średnia",stat(d[2],sr)],["CPU °C max",stat(d[3],mx)],["GPU °C max",stat(d[5],mx)],["NVMe °C max",stat(d[4],mx)],["Load średni",stat(d[6],sr)],["Dławienie w zakresie",dd.toLocaleString('pl')]].map(([a,b])=>`<div class="stat"><b>${a}</b>${b}</div>`).join('');
   const last=new Date(dane[0][dane[0].length-1]*1000);
   document.getElementById('info').textContent=`Ostatnia minuta: ${last.toLocaleString('pl')} · strona odświeża się co minutę, dane przychodzą co 15 min (minuty: min, średnia, max z próbek co 10 s)`;
-  const W=Math.min(1068,document.querySelector('main').clientWidth);
-  const o1={width:W,height:300,title:'Temperatury',scales:{x:{time:true}},axes:[{},{label:'°C'}],bands:[{series:[3,1],fill:'rgba(228,87,46,0.15)'}],
+  const mm=document.querySelector('main'),cs=getComputedStyle(mm);const W=Math.min(1068,mm.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight));const maly=W<600;
+  const o1={width:W,height:maly?260:320,title:'Temperatury',fmtDate:polskiCzas,scales:{x:{time:true}},plugins:[piki()],axes:[{space:maly?60:80},{label:maly?'':'°C',size:maly?36:50,space:24,grid:{stroke:'rgba(128,128,128,0.35)',width:1},values:(u,v)=>v.map(x=>x+'°')}],bands:[{series:[3,1],fill:'rgba(228,87,46,0.15)'}],
     series:[{},{label:'CPU min',stroke:'rgba(228,87,46,0.4)'},{label:'CPU średnia',stroke:'#e4572e',width:1.5},{label:'CPU max',stroke:'rgba(228,87,46,0.4)'},{label:'NVMe max',stroke:'#4c9be8'},{label:'GPU max',stroke:'#29a36a'}]};
   const st=()=>uPlot.paths.stepped({align:1});
-  const o2={width:W,height:220,title:'Obciążenie i praca',scales:{x:{time:true}},axes:[{},{label:'load'},{side:1,label:'liczba',scale:'n',grid:{show:false}}],
+  const o2={fmtDate:polskiCzas,width:W,height:maly?200:220,title:'Obciążenie i praca',scales:{x:{time:true}},axes:[{space:maly?60:80},{label:maly?'':'load',size:maly?32:50},{side:1,label:maly?'':'liczba',scale:'n',size:maly?24:50,grid:{show:false}}],
     series:[{},{label:'Load',stroke:'#8a63d2'},{label:'Workerzy floty',stroke:'#e4a72e',scale:'n',paths:st()},{label:'Bramki',stroke:'#d23f7a',scale:'n',paths:st()},{label:'Wdrożenie',stroke:'#2eb5c4',scale:'n',paths:st()},{label:'Mielarka',stroke:'#7a8a3c',scale:'n',paths:st()}]};
   if(p1){p1.destroy();p2.destroy()}
   p1=new uPlot(o1,[d[0],d[1],d[2],d[3],d[4],d[5]],document.getElementById('w1'));
   p2=new uPlot(o2,[d[0],d[6],d[7],d[8],d[9],d[10]],document.getElementById('w2'));
 }
 pobierz().catch(e=>document.getElementById('info').textContent='Błąd: '+e.message);
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(rysuj,200)});
 setInterval(()=>pobierz().catch(()=>{}),60000);
 </script></body></html>
