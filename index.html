@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Temperatura laptopa</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+<style>
+:root{--bg:#fff;--fg:#1d2228;--mut:#6b7280;--card:#f4f5f7}
+@media (prefers-color-scheme:dark){:root{--bg:#14171b;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2127}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}.mut{color:var(--mut);font-size:13px}
+.zakres button{margin:8px 6px 8px 0;padding:6px 12px;border:1px solid var(--mut);background:var(--card);color:var(--fg);border-radius:6px;cursor:pointer}
+.zakres button.on{border-color:#e4572e;color:#e4572e}
+.staty{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:8px 0 12px}
+.stat{background:var(--card);border-radius:8px;padding:8px 10px}.stat b{display:block;font-size:13px;color:var(--mut);font-weight:500}
+.wyk{margin-bottom:16px}.u-legend{font-size:12px}
+</style></head><body><main>
+<h1>Temperatura laptopa</h1>
+<div class="mut" id="info">Ładowanie…</div>
+<div class="zakres" id="zakres"></div>
+<div class="staty" id="staty"></div>
+<div class="wyk" id="w1"></div>
+<div class="wyk" id="w2"></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+<script>
+const ZAKRESY=[["1 h",3600],["6 h",21600],["24 h",86400],["7 dni",604800],["całość",0]];
+let zakres=86400,dane=null,p1=null,p2=null;
+const z=document.getElementById('zakres');
+ZAKRESY.forEach(([n,s])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{zakres=s;rysuj()};b.dataset.s=s;z.appendChild(b)});
+function num(v){const x=parseFloat(v);return Number.isFinite(x)?x:null}
+async function pobierz(){
+  const r=await fetch('probki.csv?t='+Date.now(),{cache:'no-store'});const t=await r.text();
+  const w=t.trim().split('\n').slice(1).map(l=>l.split(','));
+  const c=[[],[],[],[],[],[],[],[],[],[],[]];
+  for(const k of w){const ts=Date.parse(k[0])/1000;if(!ts)continue;
+    c[0].push(ts);c[1].push(num(k[1]));c[2].push(num(k[3]));c[3].push(num(k[4]));c[4].push(num(k[6]));c[5].push(num(k[7]));
+    c[6].push(num(k[9]));c[7].push(num(k[10])==null?null:num(k[10])/2);c[8].push(num(k[11]));c[9].push(num(k[12]));c[10].push(num(k[8]))}
+  dane=c;rysuj();
+}
+function wytnij(){if(!dane||!dane[0].length)return null;const koniec=dane[0][dane[0].length-1];const od=zakres?koniec-zakres:0;
+  let i=dane[0].findIndex(x=>x>=od);if(i<0)i=0;const out=dane.map(a=>a.slice(i));
+  const n=out[0].length,krok=Math.max(1,Math.floor(n/3000));if(krok>1){return out.map((a,j)=>a.filter((_,k)=>k%krok===0))}return out}
+function stat(a){const v=a.filter(x=>x!=null);if(!v.length)return'-';const s=v.reduce((p,x)=>p+x,0)/v.length;return `${Math.min(...v).toFixed(0)} / ${s.toFixed(1)} / ${Math.max(...v).toFixed(0)}`}
+function rysuj(){
+  document.querySelectorAll('#zakres button').forEach(b=>b.classList.toggle('on',+b.dataset.s===zakres));
+  const d=wytnij();if(!d)return;
+  const dl=d[10].filter(x=>x!=null),dd=dl.length>1?dl[dl.length-1]-dl[0]:0;
+  document.getElementById('staty').innerHTML=[["CPU °C min/śr/max",stat(d[1])],["GPU °C",stat(d[3])],["NVMe °C",stat(d[2])],["Load",stat(d[4])],["Dławienie w zakresie",dd.toLocaleString('pl')],["Próbek",d[0].length.toLocaleString('pl')]].map(([a,b])=>`<div class="stat"><b>${a}</b>${b}</div>`).join('');
+  const last=new Date(dane[0][dane[0].length-1]*1000);
+  document.getElementById('info').textContent=`Ostatnia próbka: ${last.toLocaleString('pl')} · odświeżanie co minutę · dane co 10 s, wysyłka co 15 min`;
+  const W=Math.min(1068,document.querySelector('main').clientWidth);
+  const o1={width:W,height:300,title:'Temperatury',scales:{x:{time:true}},axes:[{},{label:'°C'}],
+    series:[{},{label:'CPU',stroke:'#e4572e',width:1.5},{label:'NVMe',stroke:'#4c9be8'},{label:'GPU',stroke:'#29a36a'}]};
+  const o2={width:W,height:220,title:'Obciążenie i praca',scales:{x:{time:true}},axes:[{},{label:'load'},{side:1,label:'liczba',scale:'n',grid:{show:false}}],
+    series:[{},{label:'Load',stroke:'#8a63d2'},{label:'Workerzy floty',stroke:'#e4a72e',scale:'n',paths:uPlot.paths.stepped({align:1})},{label:'Bramki',stroke:'#d23f7a',scale:'n',paths:uPlot.paths.stepped({align:1})},{label:'Wdrożenie',stroke:'#2eb5c4',scale:'n',paths:uPlot.paths.stepped({align:1})},{label:'Mielarka',stroke:'#7a8a3c',scale:'n',paths:uPlot.paths.stepped({align:1})}]};
+  const a1=[d[0],d[1],d[2],d[3]],a2=[d[0],d[4],d[6],d[7],d[8],d[9]];
+  if(p1){p1.destroy();p2.destroy()}
+  p1=new uPlot(o1,a1,document.getElementById('w1'));p2=new uPlot(o2,a2,document.getElementById('w2'));
+}
+pobierz().catch(e=>document.getElementById('info').textContent='Błąd: '+e.message);
+setInterval(()=>pobierz().catch(()=>{}),60000);
+</script></body></html>
