@@ -18,7 +18,7 @@ while true; do
   w=$(grep -cE '^[^ ]*claude .*--remote-control studia-flota-' <<<"$ps")
   g=$(grep -c '^bash .*tools/fleet/gates.sh' <<<"$ps")
   dep=$(grep -cE '^node [^ ]*deploy\.mjs' <<<"$ps")
-  mp=$(pgrep -f 'worker/worker.js' | head -1); m=0; [ -n "$mp" ] && m=$(pgrep -P "$mp" | wc -l)
+  mp=$(pgrep -f 'studia-mill/worker.js' | head -1); m=0; [ -n "$mp" ] && m=$(pgrep -P "$mp" | wc -l)
   OUT="$DIR/$(date +%F).csv"; [ -s "$OUT" ] || echo "$HDR" > "$OUT"
   echo "$(date -Iseconds),$(rd $CPU),$(rd $ACPI),$(rd $NVME),$gpu,$load,$mhz,$thr,$w,$g,$dep,$m" >> "$OUT"
   i=$((i+1)); sleep 10
